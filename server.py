@@ -1,6 +1,5 @@
 from tkinter import *
 import tkinter as tk
-from test import Server_socket as ss
 import paho.mqtt.client as mqtt
 import time
 
