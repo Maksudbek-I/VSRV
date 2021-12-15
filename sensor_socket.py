@@ -1,42 +1,47 @@
 from tkinter import *
+import tkinter as tk
 import paho.mqtt.client as mqtt
 import time
 import random
 
+
 class Sensor:
     def __init__(self, name, turn):
         self.name = name
-        self.turn = turn
-        self.temperature = random.randint(16, 100)
-        self.smoke = random.randint(0, 100)
+        self.turn = turn  # 1 - ON, 0 - OFF
+        self.avr_temp = 50
+        self.avr_smoke = 50
+        self.temperature = self.avr_temp + random.randint(-10, 10)
+        self.smoke = self.avr_smoke + random.randint(-10, 10)
 
     def get_temperature(self):
-            self.temperature = (random.randint(16, 100) if self.turn else 0)
-            return self.temperature
+        self.temperature = (self.avr_temp + random.randint(-10, 10) if self.turn == 1 else 0)
+        return self.temperature
 
     def get_smoke(self):
-            self.smoke = (random.randint(0, 100) if self.turn else 0)
-            return self.smoke
+        self.smoke = (self.avr_smoke + random.randint(-10, 10) if self.turn == 1 else 0)
+        return self.smoke
 
     def sensor_turn(self, turn):
-            self.turn = turn
+        self.turn = turn
 
     def publish_all(self, client):
-            client.publish(self.name+'/turned', payload=('ON' if self.turn else 'OFF'))
-            client.publish(self.name+'/temperature', self.get_temperature())
-            client.publish(self.name+'/smoke', self.get_smoke())
+        client.publish(self.name + '/turn', payload=str(self.turn))
+        client.publish(self.name + '/temperature', self.get_temperature())
+        client.publish(self.name + '/smoke', self.get_smoke())
 
 
-sensors = {'sensor1': Sensor('sensor1', True),
-           'sensor2': Sensor('sensor2', True),
-           'sensor3': Sensor('sensor3', True)}
+sensors = {'sensor1': Sensor('sensor1', 1),
+           'sensor2': Sensor('sensor2', 1),
+           'sensor3': Sensor('sensor3', 1)}
 
 
 def on_connect(client, userdata, flags, rc):
     if rc == 0:
         print("Connected to MQTT Broker!")
+        client.subscribe('server/turn')
         for sensor in sensors:
-            client.subscribe(sensor+'/turn') # включение/отключение датчика
+            client.subscribe('server/turn_' + sensor)  # включение/отключение датчика
     else:
         print("Failed to connect, return code %d\n", rc)
 
@@ -44,16 +49,28 @@ def on_connect(client, userdata, flags, rc):
 def on_message(client, userdata, msg):
     topic = msg.topic
     payload = msg.payload.decode('utf-8')
-    print(msg.topic + ' || ' + payload)
+    print(msg.topic + ' | ' + payload)
+    name_sensor = topic.split('_')[-1]
+    if 'server/turn_' in topic:
+        sensors[name_sensor].sensor_turn(int(payload))
+    elif topic == 'server/turn':
+        print("CONNECT SERVER")
 
-    if '/turn' in topic and 'sensor' in topic:
-        name_sensor = topic.split('/')[0]
-        if payload == '1':
-            sockets[name_sensor].sensor_turn(True)
-            sockets[name_sensor].publish_all(client)
-        elif payload == '0':
-            sockets[name_sensor].sensor_turn(False)
-            sockets[name_sensor].publish_all(client)
+    test_on_message(topic, payload, name_sensor)
+
+
+def test_on_message(topic, payload, name_sensor):
+    if 'test' in topic:
+        if 'test/avr_tmp_' in topic:
+            sensors[name_sensor].avr_temp = int(payload)
+        elif 'test/avr_smoke_' in topic:
+            sensors[name_sensor].avr_smoke = int(payload)
+
+
+def test_on_connect():
+    for sensor in sensors:
+        client.subscribe('test/avr_tmp_' + sensor)
+        client.subscribe('test/avr_smoke_' + sensor)
 
 
 if __name__ == '__main__':
@@ -61,8 +78,8 @@ if __name__ == '__main__':
     client.connect("localhost", 1883, 60)
     client.on_message = on_message
     client.on_connect = on_connect
+    test_on_connect()
     client.loop_start()
-
     try:
         while True:
             time.sleep(1)
