@@ -56,7 +56,7 @@ class sensor_management_app(tk.Tk):
     def __init__(self):
         super().__init__()
         self.title('Sensors')
-        self.geometry('700x400')  # Размер
+        self.geometry('450x280')  # Размер
 
         # создание фрейма и отображение датчиков
         self.left_frame = Frame(self)

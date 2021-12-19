@@ -9,21 +9,25 @@ class Sensor:
     def __init__(self, name, turn):
         self.name = name
         self.turn = turn  # 1 - ON, 0 - OFF
-        self.avr_temp = 50
-        self.avr_smoke = 50
-        self.temperature = self.avr_temp + random.randint(-10, 10)
-        self.smoke = self.avr_smoke + random.randint(-10, 10)
+        self.avr_temp = 25
+        self.avr_smoke = 5
+        self.temperature = self.avr_temp + random.randint(-5, 5)
+        self.smoke = self.avr_smoke + random.randint(-2, 2)
 
     def get_temperature(self):
-        self.temperature = (self.avr_temp + random.randint(-10, 10) if self.turn == 1 else 0)
+        self.temperature = (self.avr_temp + random.randint(-5, 5) if self.turn == 1 else 0)
         return self.temperature
 
     def get_smoke(self):
-        self.smoke = (self.avr_smoke + random.randint(-10, 10) if self.turn == 1 else 0)
+        self.smoke = (self.avr_smoke + random.randint(-2, 2) if self.turn == 1 else 0)
+        if self.smoke < 0:
+            self.smoke = 0
+        if self.smoke > 100:
+            self.smoke = 100
         return self.smoke
 
     def sensor_turn(self, turn):
-        self.turn = turn
+        self.turn = turn  # 1 - ON, 0 - OFF
 
     def publish_all(self, client):
         client.publish(self.name + '/turn', payload=str(self.turn))

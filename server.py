@@ -2,12 +2,14 @@ from tkinter import *
 import tkinter as tk
 import paho.mqtt.client as mqtt
 import time
+import sqlite3
+import datetime
 
 
 class sensor_information_block(tk.Frame):
     """
-	Класс для отображения информации о датчике
-	"""
+    Класс для отображения информации о датчике
+    """
 
     def __init__(self, window, name):
         super().__init__(window, width=100, height=100, bg='#a7a7b8', padx=1, pady=1)
@@ -58,10 +60,10 @@ class sensor_information_block(tk.Frame):
 
     def connect(self, flag):
         """
-		Функция изменяет изображение информации о датчике
-		flag == True - датчик подключен
-		flag == False - датчик отключен
-		"""
+        Функция изменяет изображение информации о датчике
+        flag == True - датчик подключен
+        flag == False - датчик отключен
+        """
         self.turn = flag
         if flag == 1:
             self.connect_button["text"] = "connect"
@@ -73,18 +75,13 @@ class sensor_information_block(tk.Frame):
 
 class App(tk.Tk):
     """
-	Класс для отображения информации о сервере (основное окно)
-	"""
+    Класс для отображения информации о сервере (основное окно)
+    """
 
     def __init__(self):
         super().__init__()
         self.title('Server')
-        self.geometry('900x450')  # Размер
-        self.grid_columnconfigure(0, weight=3)
-        self.grid_columnconfigure(1, weight=5)
-        self.grid_rowconfigure(0, weight=1)
-
-        # создание фрейма и отображение датчиков
+        self.geometry('350x450')  # Размер
         self.left_frame = Frame(self, bg='#9898ff')
         self.client_sockets = {'sensor1': sensor_information_block(self.left_frame, "sensor1"),
                                'sensor2': sensor_information_block(self.left_frame, "sensor2"),
@@ -96,12 +93,24 @@ class App(tk.Tk):
         self.left_frame.grid(row=0, column=0, sticky="nesw")
 
         self.right_frame = Frame(self, bg="#ddddff")
-        self.test_label = Label(self.right_frame, text='TEST', fg="#000000", bg="#cfe1d4", width=20, height=5)
-        self.test_label.pack()
-        self.right_frame.grid(row=0, column=1, sticky="nesw")
+        self.fire_alarm_label = Label(self.right_frame, text='Fire alarm system', fg="#000000", bg="#cfe1d4", width=20,
+                                      height=5)
+        self.fire_alarm_status_label = Label(self.right_frame, text='status: OFF', fg="#000000", bg="#00a51c", width=20,
+                                             height=5)
+        self.fire_alarm_label.grid(row=0, column=0)
+        self.fire_alarm_status_label.grid(row=1, column=0)
+        self.right_frame.grid(row=1, column=0, sticky="nesw")
 
     def turn_sensor(self, name_sensor, turn):
         self.client_sockets[name_sensor].connect(turn)
+
+    def set_fire_alarm_status(self, status):
+        if status == 1:
+            self.fire_alarm_status_label["text"] = 'status: ON'
+            self.fire_alarm_status_label["bg"] = "#00a51c"
+        elif status == 0:
+            self.fire_alarm_status_label["text"] = 'status: OFF'
+            self.fire_alarm_status_label["bg"] = "#d2082d"
 
 
 def stop():
@@ -119,7 +128,7 @@ def on_connect(client, userdata, flags, rc):
 def on_message(client, userdata, msg):
     topic = msg.topic
     payload = msg.payload.decode('utf-8')
-    app.test_label['text'] = msg.topic + '||' + payload
+    add_logs(topic, payload)
     if 'sensor' in topic:
         name_sensor = topic.split('/')[0]
         if 'temperature' in topic:
@@ -128,11 +137,54 @@ def on_message(client, userdata, msg):
             app.client_sockets[name_sensor].set_smoke(payload)
         elif 'turn' in topic:
             app.client_sockets[name_sensor].connect(int(payload))
+    check()
+
+
+def add_logs(topic, payload):
+    data_tuple = (topic, payload, datetime.datetime.now())
+    comm = """INSERT INTO 'logs' VALUES (?, ?, ?);"""
+    cursor.execute(comm, data_tuple)
+    conn.commit()
+
+
+def create_table():
+    try:
+        cursor.execute("""CREATE TABLE logs
+		(topic TEXT NOT NULL,
+		payload TEXT NOT NULL,
+		joiningDate timestamp)
+		""")
+    except:
+        # таблица уже создана
+        pass
+
+
+FIRE = 0
+
+
+def check():
+    status = False
+    global FIRE
+    for s in app.client_sockets:
+        if int(app.client_sockets[s].temperature_value['text'].split()[0]) >= 60:
+            status = True
+        if int(app.client_sockets[s].smoke_value['text'].split()[0]) >= 30:
+            status = True
+    if status and FIRE != 1:
+        FIRE = 1
+        app.set_fire_alarm_status(1)
+        client.publish('server/fire_alarm', '1')
+    elif not status and FIRE != 0:
+        FIRE = 0
+        app.set_fire_alarm_status(0)
+        client.publish('server/fire_alarm', '0')
 
 
 if __name__ == "__main__":
+    conn = sqlite3.connect("logs.db", check_same_thread=False)
+    cursor = conn.cursor()
+    create_table()
     app = App()
-
     client = mqtt.Client()
     client.on_connect = on_connect
     client.on_message = on_message
